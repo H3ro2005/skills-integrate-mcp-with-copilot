@@ -1,17 +1,53 @@
 document.addEventListener("DOMContentLoaded", () => {
   const activitiesList = document.getElementById("activities-list");
   const activitySelect = document.getElementById("activity");
+  const signupContainer = document.getElementById("signup-container");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const authStatus = document.getElementById("auth-status");
+  const teacherNotice = document.getElementById("teacher-notice");
+  const openLoginButton = document.getElementById("open-login");
+  const logoutButton = document.getElementById("logout");
+  const loginDialog = document.getElementById("login-dialog");
+  const loginForm = document.getElementById("login-form");
+  const loginError = document.getElementById("login-error");
+  const cancelLoginButton = document.getElementById("cancel-login");
+  let isTeacher = false;
+
+  function updateAuthUI() {
+    signupContainer.classList.toggle("hidden", !isTeacher);
+    teacherNotice.classList.toggle("hidden", isTeacher);
+    openLoginButton.classList.toggle("hidden", isTeacher);
+    logoutButton.classList.toggle("hidden", !isTeacher);
+    authStatus.textContent = isTeacher
+      ? "Teacher session active"
+      : "Sign in to manage registrations";
+  }
+
+  async function checkAuthStatus() {
+    const response = await fetch("/auth/status");
+    if (!response.ok) {
+      throw new Error("Teacher authentication is not configured");
+    }
+
+    const result = await response.json();
+    isTeacher = result.authenticated;
+    updateAuthUI();
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
       const response = await fetch("/activities");
+      if (!response.ok) {
+        throw new Error("Failed to load activities");
+      }
       const activities = await response.json();
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML =
+        '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -30,7 +66,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${details.participants
                   .map(
                     (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                      `<li><span class="participant-email">${email}</span>${
+                        isTeacher
+                          ? `<button class="delete-btn" data-activity="${encodeURIComponent(name)}" data-email="${encodeURIComponent(email)}" aria-label="Unregister ${email}">❌</button>`
+                          : ""
+                      }</li>`
                   )
                   .join("")}
               </ul>
@@ -70,8 +110,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // Handle unregister functionality
   async function handleUnregister(event) {
     const button = event.target;
-    const activity = button.getAttribute("data-activity");
-    const email = button.getAttribute("data-email");
+    const activity = decodeURIComponent(button.getAttribute("data-activity"));
+    const email = decodeURIComponent(button.getAttribute("data-email"));
 
     try {
       const response = await fetch(
@@ -155,6 +195,68 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  openLoginButton.addEventListener("click", () => {
+    loginError.classList.add("hidden");
+    loginDialog.showModal();
+  });
+
+  cancelLoginButton.addEventListener("click", () => {
+    loginDialog.close();
+  });
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    loginError.classList.add("hidden");
+
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    try {
+      const response = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.detail || "Unable to log in");
+      }
+
+      isTeacher = true;
+      updateAuthUI();
+      loginDialog.close();
+      loginForm.reset();
+      await fetchActivities();
+    } catch (error) {
+      loginError.textContent = error.message;
+      loginError.classList.remove("hidden");
+    }
+  });
+
+  logoutButton.addEventListener("click", async () => {
+    try {
+      const response = await fetch("/auth/logout", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Unable to log out");
+      }
+
+      isTeacher = false;
+      updateAuthUI();
+      await fetchActivities();
+    } catch (error) {
+      messageDiv.textContent = error.message;
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+    }
+  });
+
   // Initialize app
-  fetchActivities();
+  checkAuthStatus()
+    .catch((error) => {
+      authStatus.textContent = error.message;
+      teacherNotice.textContent =
+        "Teacher registration management is unavailable until authentication is configured.";
+    })
+    .finally(fetchActivities);
 });
