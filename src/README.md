@@ -15,15 +15,44 @@ A super simple FastAPI application that allows students to view and sign up for 
    pip install fastapi uvicorn
    ```
 
-2. Run the application:
+2. Configure teacher authentication. Set these environment variables before starting the app:
+
+   - `TEACHER_CREDENTIALS_JSON`: a JSON object mapping each teacher username to their unique password
+   - `SESSION_SECRET`: a randomly generated secret used to sign login sessions
+   - `COOKIE_SECURE`: set to `true` when serving the app over HTTPS; use `false` for local HTTP development
+
+   For local development, put these values in the ignored `.env` file (create one in the workspace root). It should contain:
 
    ```
-   python app.py
+   TEACHER_CREDENTIALS_JSON='{"teacher":"replace-with-a-unique-password"}'
+   SESSION_SECRET=paste-a-random-secret-here
+   COOKIE_SECURE=false
    ```
 
-3. Open your browser and go to:
+   Generate a session secret with:
+
+   ```
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+
+   `SESSION_SECRET` must be at least 32 bytes. Add one entry per teacher to `TEACHER_CREDENTIALS_JSON`. Keep all credentials out of tracked files.
+
+3. Run the application:
+
+   ```
+   set -a
+   . ./.env
+   set +a
+   uvicorn src.app:app --reload
+   ```
+
+   For production, use your deployment's secret manager and enable secure cookies. Do not commit credentials.
+
+4. Open your browser and go to:
    - API documentation: http://localhost:8000/docs
    - Alternative documentation: http://localhost:8000/redoc
+
+Students can view activities and participants without signing in. Teachers must log in to sign up or unregister students.
 
 ## API Endpoints
 
